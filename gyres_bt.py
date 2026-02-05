@@ -107,6 +107,7 @@ def main():
     # Psi_SO_sep = BarotropicStreamfunction(ds_v, "uo", ds_areacello.lon_bnds, ds_areacello.lat_bnds, depth_ocean, ds_basin.basin.where(ds_basin.basin==1), month=9)
     Psi_SO = BarotropicStreamfunction(ds_v, "uo", ds_areacello.lon_bnds, ds_areacello.lat_bnds, depth_ocean, ds_basin.basin.where(ds_basin.basin==1))
     Psi_SO_sep = select_month(Psi_SO, 9)
+    dz = calculate_dz_with_bottom_depth(ds_v.lev_bnds, depth_ocean)
 
     Psi_weddell_gyre_sep, Psi_weddell_gyre_ann = compute_gyre_strength_region_min(Psi_SO, -60, 60)
     Psi_ross_gyre_sep, Psi_ross_gyre_ann = compute_gyre_strength_region_min(Psi_SO, -210, -135)
@@ -176,7 +177,7 @@ def main():
     try:
         client, cluster = connect_dask_cluster()
         print(f"Dask Dashboard link: {client.dashboard_link}")
-
+        compute_and_save('dz', 'data/', dz)
         compute_and_save('gyres_sep_regionmin', 'data/', gyres_sep_regionmin)
         compute_and_save('gyres_ann_regionmin', 'data/', gyres_ann_regionmin)
         compute_and_save('gyres_sep_meanregion', 'data/', gyres_sep_meanregion)

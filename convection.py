@@ -22,13 +22,16 @@ def cal_st_to_density(ds, xname: str, yname: str):
     sigma0_avgs = gsw.sigma0(ds.so.mean("time"), ds.thetao)
     return sigma0.mean((xname, yname)).load(), sigma0_avgt.mean((xname, yname)).load(), sigma0_avgs.mean((xname, yname)).load()
     
-def cal_heat_content(ds, conv, lev1=0, lev2=2000):
-    dz = ds.lev_bnds[:, 1] - ds.lev_bnds[:, 0]
-    conv_t = ds.thetao.where(conv>0).mean(('x','y'))
-    conv_t_dz = conv_t * dz
-    heat_content = conv_t_dz.sel(lev=slice(lev1, lev2)).sum('lev')
-    heat_sep = select_month(heat_content, 9)
-    heat_ann = heat_content.groupby("time.year").mean("time")
+def cal_heat_content(temp, conv, vol, area, dens=1026.0, cp=3991.86795711963, lev1=0, lev2=2001):
+    temp_k = temp + 273.15
+    temp_k_conv = temp_k.where(conv>0, drop=True)
+    vol_conv = vol.where(conv>0, drop=True)
+    area_conv = area.where(conv>0, drop=True)
+    conv_heat = cp * dens * temp_k_conv * vol_conv
+    heat_content = conv_heat.sel(lev=slice(lev1, lev2)).sum('lev')
+    heat_content_mean = heat_content.sum(('x','y')) / area_conv.sum(('x','y'))
+    heat_sep = select_month(heat_content_mean, 9)
+    heat_ann = heat_content_mean.groupby("time.year").mean("time")
     return heat_sep, heat_ann
 
 def get_conv_property_mean(ds, conv, xname = 'x', yname = 'y'):
@@ -50,11 +53,13 @@ def main_convection() -> None:
     ds_hfds = ReadDataFromNCAR(variable_id=["hfds"], grid_label = 'gn', table_id="Omon")
     ds_siconc = ReadDataFromNCAR(variable_id=["siconc"], grid_label = 'gn', table_id="SImon")
     ds_sithick = ReadDataFromNCAR(variable_id=["sithick"], grid_label = 'gn', table_id="SImon")
+    ds_volcello = ReadDataFromNCAR(variable_id = "volcello", grid_label = 'gn')
+    ds_areacello = ReadDataFromNCAR(variable_id = "areacello", grid_label = 'gn')
 
     ds_sep = select_month(ds_st, 9)
     ds_sep_SO = ds_sep.sel({'y': slice(-90, -40)})
-    ds_sep_ws = ds_sep_SO.sel(x = slice(-60, 60))
-    ds_sep_rs = ds_sep_SO.sel(x = slice(-210, -135))
+    ds_sep_ws = ds_sep_SO.sel({'x': slice(-60, 60)})
+    ds_sep_rs = ds_sep_SO.sel({'x': slice(-210, -135)})
 
     sigma0 = gsw.sigma0(ds_st['so'], ds_st['thetao'])
     mld = cal_mld(sigma0, 'lev')
@@ -69,8 +74,13 @@ def main_convection() -> None:
     else:
         conv_rs = find_conv(ds_sep_rs, 'lev')
 
-    heat_content_ws_sep, heat_content_ws_ann = cal_heat_content(ds_sep_ws, conv_ws)
-    heat_content_rs_sep, heat_content_rs_ann = cal_heat_content(ds_sep_rs, conv_rs)
+    dz = openpickle('dz', 'data/')
+
+    heat_content_2000_ws_sep, heat_content_2000_ws_ann = cal_heat_content(ds_st.thetao, conv_ws, ds_volcello.volcello, ds_areacello.areacello)
+    heat_content_2000_rs_sep, heat_content_2000_rs_ann = cal_heat_content(ds_st.thetao, conv_rs, ds_volcello.volcello, ds_areacello.areacello)
+
+    # heat_content_total_ws_sep, heat_content_total_ws_ann = cal_heat_content(ds_sep_ws, conv_ws, dz, lev2=7000)
+    # heat_content_total_rs_sep, heat_content_total_rs_ann = cal_heat_content(ds_sep_rs, conv_rs, dz, lev2=7000)
 
     mld_rs_sep, mld_rs_ann = get_conv_property_mean(mld, conv_rs)
     mld_ws_sep, mld_ws_ann = get_conv_property_mean(mld, conv_ws)
@@ -129,10 +139,14 @@ def main_convection() -> None:
     st_dict = {
         'conv_ind_ws': conv_ind_ws,
         'conv_ind_rs': conv_ind_rs,
-        'heat_content_ws_sep': heat_content_ws_sep,
-        'heat_content_ws_ann': heat_content_ws_ann,
-        'heat_content_rs_sep': heat_content_rs_sep,
-        'heat_content_rs_ann': heat_content_rs_ann,
+        'heat_content_2000_ws_sep': heat_content_2000_ws_sep,
+        'heat_content_2000_ws_ann': heat_content_2000_ws_ann,
+        'heat_content_2000_rs_sep': heat_content_2000_rs_sep,
+        'heat_content_2000_rs_ann': heat_content_2000_rs_ann,
+        # 'heat_content_total_ws_sep': heat_content_total_ws_sep,
+        # 'heat_content_total_ws_ann': heat_content_total_ws_ann,
+        # 'heat_content_total_rs_sep': heat_content_total_rs_sep,
+        # 'heat_content_total_rs_ann': heat_content_total_rs_ann,
     }
 
     try:
@@ -227,7 +241,6 @@ def main_freshwater() -> None:
     finally:
         client.close()
         cluster.close()
-
 
 def main() -> None:
     main_convection()

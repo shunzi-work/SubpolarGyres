@@ -863,7 +863,7 @@ def connect_dask_cluster():
         interface       = 'ext',
         silence_logs    = 'error',
     )
-    cluster.adapt(minimum=2, maximum=100)
+    cluster.adapt(minimum=2, maximum=80)
     client = Client(cluster)
     return client, cluster
 
@@ -903,3 +903,18 @@ def compute_and_save(savename, savepath, savedata) -> None:
         savedata = savedata.compute()
         savepickle(savename, savepath, savedata)
         print(f"{savename} saved")
+
+def running_mean(data, window_size: int=10):
+    kernel = np.ones(window_size) / window_size
+    result = np.convolve(data.values, kernel, mode='same')
+    return xr.DataArray(result, dims=data.dims, coords=data.coords)
+
+def normalize_timeseries(t):
+    tmean = np.mean(t)
+    tstd = np.std(t.astype(float))
+    return (t - tmean) / tstd
+
+def detrend_timeseries(t):
+    p = np.polyfit(np.arange(len(t)), t, 1)
+    trend = np.polyval(p, np.arange(len(t)))
+    return t - trend
